@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Memory (auto-generated)
+memory_auto/
+
+# Test files
+test_*.py
+*.test.py
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Windows
+Thumbs.db
+desktop.ini

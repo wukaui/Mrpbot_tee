@@ -1,0 +1,123 @@
+# Mrpbot 配置文件
+
+bot:
+  # 机器人显示名称
+  name: "智能助手"
+  
+  # 兼容旧字段：角色名（可选）
+  character: "assistant"
+
+  # 兼容旧字段：人设文件（可选）
+  identity_file: "config/characters/assistant.md"
+  
+  # 日志级别 (DEBUG, INFO, WARNING, ERROR)
+  log_level: "INFO"
+
+# 通信渠道
+channels:
+  onebot:
+    # 是否启用
+    enabled: true
+    
+    # WebSocket 地址
+    ws_url: "ws://127.0.0.1:6199"
+    
+    # Access Token (可选)
+    access_token: "${QQ_ACCESS_TOKEN}"
+    
+    # 重连间隔 (秒)
+    reconnect_interval: 5
+    
+    # 心跳间隔 (秒)
+    heartbeat_interval: 30
+
+# 功能模块
+features:
+  # 聊天功能（核心）
+  chat:
+    enabled: true
+    
+    # LLM 模型
+    model: "deepseek-chat"
+    
+    # 最大 token
+    max_tokens: 1024
+    
+    # 温度
+    temperature: 0.7
+    
+    # 系统提示词（可选，最高优先级）
+    # system_prompt: "你是一个简洁的技术助手"
+
+# 人设系统（推荐使用）
+persona:
+  # 人设名：会尝试加载 config/characters/<name>.md
+  name: "assistant"
+
+  # 人设文件路径（可选；设置后优先于 name）
+  # file: "config/characters/assistant.md"
+
+  # 显式系统提示词（可选；优先级高于 file/name）
+  # system_prompt: ""
+  
+  # 群聊功能
+  group:
+    enabled: true
+    
+    # 回复欲望阈值 (0-100，越低越活跃)
+    reply_threshold: 45
+    
+    # 冷却时间 (秒)
+    cooldown: 60
+    
+    # @机器人必回
+    reply_when_mentioned: true
+  
+  # 记忆功能（核心）
+  memory:
+    enabled: true
+    
+    # 短期记忆大小
+    short_term_size: 100
+    
+    # 自动保存间隔 (秒)
+    auto_save_interval: 300
+    
+    # 记忆目录
+    dir: "memory"
+    auto_dir: "memory_auto"
+  
+  # 主动消息
+  proactive:
+    enabled: true
+    
+    # 检查间隔 (秒)
+    check_interval: 3600
+    
+    # 是否发送定时问候
+    greeting_enabled: false
+
+# LLM 配置
+llm:
+  # API Key (也可以用环境变量 DEEPSEEK_API_KEY)
+  api_key: "${DEEPSEEK_API_KEY}"
+  
+  # API 地址 (也可以用环境变量 DEEPSEEK_BASE_URL)
+  base_url: "https://api.deepseek.com"
+  
+  # 默认模型 (也可以用环境变量 DEEPSEEK_MODEL)
+  model: "deepseek-chat"
+  
+  # 超时 (秒)
+  timeout: 30
+  
+  # 重试次数
+  max_retries: 3
+
+# 工具配置
+tools:
+  # 是否启用工具系统
+  enabled: true
+  
+  # 工具目录
+  tools_dir: "src/tools"
