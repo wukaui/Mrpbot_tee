@@ -66,12 +66,86 @@ persona:
     
     # 回复欲望阈值 (0-100，越低越活跃)
     reply_threshold: 45
+
+    # 回复欲望模型调参（信号叠加 + 时间衰减）
+    desire_tuning:
+      # 初始欲望起点（私聊 / 群聊）
+      base_private_desire: 34
+      base_group_desire: 24
+      # 每分钟自然衰减
+      decay_per_minute: 1.6
+      # 直接点名 / @机器人
+      direct_attention_boost: 24
+      # 明确提问 / 请求帮助
+      question_boost: 14
+      # 情绪 / 玩笑 / 感叹
+      emotion_boost: 8
+      # 带一点信息量的正常消息
+      content_depth_bonus: 4
+      # 群聊里轮到自己接话
+      speaker_turn_bonus: 3.5
+      # 群聊活跃度奖励
+      activity_per_speaker: 1.8
+      max_activity_bonus: 6.0
+      # 机器人长时间没说话时的小幅补偿
+      bot_quiet_threshold_seconds: 180
+      bot_quiet_bonus: 3
+      # 填充词 / 复读 / 近似复读惩罚
+      filler_penalty: -10
+      repetition_penalty: -8
+      near_repeat_penalty: -4
+      short_message_penalty: -6
+      # 没有明显信号时的群聊环境热度
+      ambient_group_interest: 2
     
     # 冷却时间 (秒)
     cooldown: 60
     
     # @机器人必回
     reply_when_mentioned: true
+
+    # 回复节奏控制（减少句句都回、分段输入误判）
+    reply_control:
+      # 同一会话预等待窗口：用于合并用户分段输入（秒）
+      merge_window_seconds: 4.5
+      # 回看窗口：提取同一用户最近分段消息（秒）
+      merge_lookback_seconds: 12
+      # 最多合并几段
+      merge_max_parts: 3
+      # 非 @ 场景最小回复间隔（秒）
+      non_mention_min_interval_seconds: 18
+      # 命中停口令后静默时长（秒）
+      quiet_mode_seconds: 180
+      # 停口令关键词
+      stop_words: ["别回了", "别回复", "不要回", "先别说话", "停一下", "闭嘴"]
+
+    # 更像人的回复时机控制
+    human_timing:
+      enabled: true
+      # 基础延迟（秒）
+      base_delay_seconds: 1.6
+      # 随机抖动（秒）
+      jitter_seconds: 1.0
+      # 最小延迟（秒）
+      min_delay_seconds: 0.6
+      # 最大延迟（秒）
+      max_delay_seconds: 7.0
+      # 短时间连续回复时附加延迟（秒）
+      burst_extra_seconds: 1.0
+
+    # 元 AI 裁决（更像群聊里的资深成员，用人的节奏判断是否接话）
+    meta_ai:
+      enabled: true
+      # 同话题最小回复间隔（秒）
+      topic_min_interval_seconds: 45
+      # 裁决时读取的最近上下文条数
+      max_context_messages: 12
+      # decision=wait 时默认等待秒数
+      default_wait_seconds: 12
+      # wait/skip 的最小置信度（过低则回退 reply）
+      min_confidence: 0.72
+      # 重复话题判定阈值（越高越不容易拦截）
+      duplicate_similarity_threshold: 0.68
   
   # 记忆功能（核心）
   memory:

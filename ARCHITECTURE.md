@@ -1,4 +1,4 @@
-# Mrpbot 2.0 架构文档
+# Mrpbot  架构文档
 
 ## 架构概览
 
@@ -132,23 +132,3 @@ $$desire = \min(100, desire + gain) - decay\_rate$$
 - 自动记忆文件：`memory_auto/*.json`
 - 生命周期任务与引擎关闭时都会触发保存
 
-## 配置关键项
-
-建议重点关注：
-
-- `features.group.reply_threshold`
-- `features.group.cooldown`
-- `features.group.reply_when_mentioned`
-- `features.group.decay_rate`
-- `features.chat.max_tokens`
-- `features.chat.temperature`
-- `llm.base_url` / `llm.model` / `llm.timeout`
-
-## 当前状态评估
-
-- 已实现可运行主链路（接收 -> 决策 -> 回复 -> 持久化）
-- 结构清晰，便于继续扩展
-- 后续建议优先补：
-  - 单元测试（消息判定、文本提取、冷却边界）
-  - 观测指标（回复率、冷却命中率、LLM 评分分布）
-  - 更细粒度的群上下文与用户画像

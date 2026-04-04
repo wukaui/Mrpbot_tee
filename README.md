@@ -1,6 +1,8 @@
-# Mrpbot 
+# Mrpbot
 
-## 🚀 快速开始
+Mrpbot 是一个基于 OneBot 的异步 QQ 机器人项目，当前实现围绕“消息接入 -> 回复判定 -> LLM 生成 -> 记忆持久化”这条主链路展开。它支持群聊、私聊、记忆、主动任务，以及基于人设的回复风格控制。
+
+## 快速开始
 
 ### 1. 安装依赖
 
@@ -12,13 +14,9 @@ pip install -r requirements.txt
 
 ```bash
 # 复制配置示例
-cp config/bot.yaml.example config/bot.yaml
+copy config\bot.yaml.example config\bot.yaml
 
-# 编辑配置
-# 复制环境变量示例
-cp .env.example .env
-
-# 编辑 .env 填入 API Key
+# 编辑 config\bot.yaml 和 .env，填入 OneBot / LLM 所需参数
 ```
 
 ### 3. 启动
@@ -27,86 +25,67 @@ cp .env.example .env
 python main.py
 ```
 
----
+## 项目结构
 
-## 📁 项目结构
-
-```
-Mrpbot2.0/
+```text
+Mprbot_tee/
+├── main.py                # 程序入口
+├── config/
+│   ├── bot.yaml.example   # 配置示例
+│   ├── bot.yaml           # 实际配置
+│   └── characters/        # 人设文件
 ├── src/
-│   ├── core/              # 核心层
-│   │   ├── __init__.py
-│   │   ├── bot.py         # 机器人主类
-│   │   ├── engine.py      # 消息引擎
-│   │   └── lifecycle.py   # 生命周期管理
-│   │
-│   ├── channels/          # 通信渠道
-│   │   ├── __init__.py
-│   │   └── onebot.py      # OneBot 协议
-│   │
-│   ├── features/          # 功能模块
-│   │   ├── __init__.py
-│   │   ├── chat/          # 聊天
-│   │   ├── games/         # 游戏
-│   │   ├── group/         # 群聊
-│   │   ├── memory/        # 记忆
-│   │   └── proactive/     # 主动消息
-│   │
-│   ├── llm/               # AI 服务
-│   │   ├── __init__.py
-│   │   └── client.py      # LLM 客户端
-│   │
-│   ├── tools/             # 工具系统
-│   │   ├── __init__.py
-│   │   ├── base.py        # 工具基类
-│   │   └── registry.py    # 工具注册表
-│   │
-│   └── utils/             # 工具函数
-│       ├── __init__.py
-│       ├── logger.py      # 日志
-│       └── config.py      # 配置
-│
-├── config/                # 配置文件
-├── memory/                # 记忆存储
-├── logs/                  # 日志
-├── main.py                # 主入口
-├── requirements.txt       # 依赖
-└── README.md              # 文档
+│   ├── core/              # 启动、消息引擎、生命周期、元裁决
+│   ├── channels/          # OneBot 通信层
+│   ├── features/          # chat / group / memory / proactive
+│   ├── llm/               # LLM 客户端
+│   ├── persona/           # 人设管理
+│   └── utils/             # 配置与日志
+├── memory/                # 长期记忆
+├── memory_auto/           # 自动记忆落盘
+├── logs/                  # 日志输出
+└── docs/                  # 补充文档
 ```
 
----
+## 当前功能
 
-## 🎯 核心功能
+### 聊天与回复
 
-### 1. 智能聊天
-- 基于 LLM 的自然对话
-- 上下文记忆
-- 流式回复
+- 基于 LLM 的自然回复
+- 支持私聊和群聊
+- 群聊里包含回复欲望、冷却、静默窗口和元 AI 裁决
+- 仅在实际发送成功后更新冷却
 
-### 2. 记忆系统
-- 短期记忆（最近 100 条）
-- 长期记忆（curated）
-- 自动保存
-- 快速检索
+### 记忆系统
 
-### 3. 群聊策略
-- 回复欲望系统
-- 智能冷却
-- @必回机制
-- 避免刷屏
+- 短期记忆按用户 / 群时间线保存
+- 长期记忆保存到 `memory/long_term.md`
+- 自动记忆保存到 `memory_auto/*.json`
+- 关闭时和生命周期任务都会触发保存
 
-### 4. 主动消息
-- 定时问候
-- 智能提醒
-- 心跳检测
+### 人设系统
 
----
+- 支持 `persona.system_prompt`
+- 支持 `persona.file`
+- 支持 `persona.name -> config/characters/<name>.md`
+- 兼容旧字段 `bot.character` / `bot.identity_file`
 
-## 📖 详细文档
+### 群聊策略
 
-- [架构文档](ARCHITECTURE.md)
-- [配置指南](config/README.md)
-- [开发文档](docs/DEV.md)
+- @ 或叫名字可触发必回
+- 回复欲望采用信号叠加 + 时间衰减
+- 元 AI 会按更接近人的方式判断 reply / wait / skip
+- 支持停口令与分段输入合并
 
----
+## 配置入口
+
+- 主配置：[`config/bot.yaml.example`](config/bot.yaml.example)
+- 人设说明：[`docs/CHARACTERS.md`](docs/CHARACTERS.md)
+- 架构说明：[`ARCHITECTURE.md`](ARCHITECTURE.md)
+
+## 说明
+
+- 当前代码入口是 `main.py`
+- OneBot 通道与 LLM 客户端都通过 `src/core/bot.py` 和 `src/core/engine.py` 串起来
+- README 里的旧目录说明已过时，以当前仓库结构和代码实现为准
 

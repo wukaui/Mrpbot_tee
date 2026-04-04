@@ -11,6 +11,7 @@ Mrpbot 2.0 核心模块
 from .bot import Mrpbot
 from .engine import MessageEngine
 from .lifecycle import LifecycleManager
+from .meta_judge import MetaJudge
 
 __version__ = "2.0.0"
-__all__ = ['Mrpbot', 'MessageEngine', 'LifecycleManager']
+__all__ = ['Mrpbot', 'MessageEngine', 'LifecycleManager', 'MetaJudge']
