@@ -42,6 +42,8 @@ class MemorySystem:
                 with open(long_term_file, 'r', encoding='utf-8') as f:
                     self.long_term['global'] = f.read()
                 logger.debug("已加载长期记忆")
+
+            self._load_auto_memory()
         except Exception as e:
             logger.error(f"加载记忆失败：{e}")
     
@@ -56,9 +58,16 @@ class MemorySystem:
             
             # 保存自动记忆
             for key, messages in self.short_term.items():
-                auto_file = os.path.join(self.auto_memory_dir, f"{key}.json")
+                auto_file = self._auto_memory_path_for_key(key)
+                if not auto_file:
+                    continue
+
+                os.makedirs(os.path.dirname(auto_file), exist_ok=True)
+                compact_messages = [self._compact_entry(message) for message in messages[-self.short_term_size:]]
                 with open(auto_file, 'w', encoding='utf-8') as f:
-                    json.dump(messages[-self.short_term_size:], f, ensure_ascii=False, indent=2)
+                    json.dump(compact_messages, f, ensure_ascii=False, indent=2)
+
+            self._cleanup_legacy_auto_files()
             
             logger.debug("✓ 记忆已保存")
         except Exception as e:
@@ -159,6 +168,176 @@ class MemorySystem:
         
         # 返回最近 limit 条
         return all_messages[-limit:]
+
+    def _load_auto_memory(self):
+        """从磁盘加载自动记忆，兼容旧版扁平文件和新版结构化目录。"""
+        if not os.path.isdir(self.auto_memory_dir):
+            return
+
+        loaded_keys = set()
+
+        for file_path in self._iter_auto_memory_files(structured_only=True):
+            key = self._auto_memory_key_from_path(file_path)
+            if not key:
+                continue
+            self._load_auto_memory_file(file_path, key)
+            loaded_keys.add(key)
+
+        for file_path in self._iter_auto_memory_files(structured_only=False):
+            relative_path = os.path.relpath(file_path, self.auto_memory_dir).replace('\\', '/')
+            if relative_path.startswith('groups/') or relative_path.startswith('users/'):
+                continue
+
+            key = self._auto_memory_key_from_path(file_path)
+            if not key or key in loaded_keys:
+                continue
+
+            self._load_auto_memory_file(file_path, key)
+            loaded_keys.add(key)
+
+    def _iter_auto_memory_files(self, structured_only: bool) -> List[str]:
+        files: List[str] = []
+        for root, _, filenames in os.walk(self.auto_memory_dir):
+            for filename in filenames:
+                if not filename.endswith('.json'):
+                    continue
+
+                file_path = os.path.join(root, filename)
+                relative_path = os.path.relpath(file_path, self.auto_memory_dir).replace('\\', '/')
+                is_structured = relative_path.startswith('groups/') or relative_path.startswith('users/')
+                if structured_only and not is_structured:
+                    continue
+                if (not structured_only) and is_structured:
+                    continue
+                files.append(file_path)
+
+        files.sort()
+        return files
+
+    def _load_auto_memory_file(self, file_path: str, key: str):
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            if not isinstance(data, list):
+                logger.warning(f"自动记忆文件格式异常，已跳过：{file_path}")
+                return
+
+            entries = [item for item in data if isinstance(item, dict)]
+            if not entries:
+                return
+
+            if key not in self.short_term:
+                self.short_term[key] = []
+
+            self.short_term[key].extend(entries)
+            self.short_term[key] = self.short_term[key][-self.short_term_size:]
+        except Exception as e:
+            logger.error(f"加载自动记忆失败：{file_path}，{e}")
+
+    def _auto_memory_key_from_path(self, file_path: str) -> Optional[str]:
+        relative_path = os.path.relpath(file_path, self.auto_memory_dir).replace('\\', '/')
+        parts = relative_path.split('/')
+        filename = parts[-1]
+
+        if relative_path.startswith('groups/'):
+            if len(parts) >= 3 and parts[2] == 'timeline.json':
+                group_id = parts[1]
+                return f"group_{group_id}_timeline"
+            if len(parts) >= 4 and parts[2] == 'users' and filename.endswith('.json'):
+                group_id = parts[1]
+                user_id = os.path.splitext(filename)[0]
+                return f"group_{group_id}_user_{user_id}"
+
+        if relative_path.startswith('users/') and filename.endswith('.json'):
+            user_id = os.path.splitext(filename)[0]
+            return f"user_{user_id}"
+
+        if filename.startswith('group_') and filename.endswith('_timeline.json'):
+            group_id = filename[len('group_'):-len('_timeline.json')]
+            return f"group_{group_id}_timeline"
+
+        if filename.startswith('group_') and '_user_' in filename and filename.endswith('.json'):
+            base_name = filename[:-5]
+            group_part, user_part = base_name.split('_user_', 1)
+            group_id = group_part[len('group_'):]
+            return f"group_{group_id}_user_{user_part}"
+
+        if filename.startswith('user_') and filename.endswith('.json'):
+            user_id = filename[len('user_'):-len('.json')]
+            return f"user_{user_id}"
+
+        return None
+
+    def _auto_memory_path_for_key(self, key: str) -> Optional[str]:
+        if key.endswith('_timeline') and key.startswith('group_'):
+            group_id = key[len('group_'):-len('_timeline')]
+            return os.path.join(self.auto_memory_dir, 'groups', group_id, 'timeline.json')
+
+        if key.startswith('group_') and '_user_' in key:
+            group_part, user_part = key.split('_user_', 1)
+            group_id = group_part[len('group_'):]
+            return os.path.join(self.auto_memory_dir, 'groups', group_id, 'users', f'{user_part}.json')
+
+        if key.startswith('user_'):
+            user_id = key[len('user_'):]
+            return os.path.join(self.auto_memory_dir, 'users', f'{user_id}.json')
+
+        return os.path.join(self.auto_memory_dir, f'{key}.json')
+
+    def _compact_entry(self, entry: Dict[str, Any]) -> Dict[str, Any]:
+        compact = {
+            'time': entry.get('time'),
+            'group_id': entry.get('group_id'),
+            'user_id': entry.get('user_id'),
+            'speaker_id': entry.get('speaker_id'),
+            'speaker_name': entry.get('speaker_name'),
+            'is_bot': entry.get('is_bot', False),
+            'text': entry.get('text', ''),
+        }
+
+        message = entry.get('message', {})
+        if isinstance(message, dict):
+            source = {}
+            for field in ['message_id', 'real_id', 'message_seq', 'real_seq', 'message_type', 'sub_type', 'group_name']:
+                value = message.get(field)
+                if value is not None:
+                    source[field] = value
+
+            sender = message.get('sender', {})
+            if isinstance(sender, dict):
+                sender_meta = {}
+                for field in ['user_id', 'nickname', 'card', 'role']:
+                    value = sender.get(field)
+                    if value is not None:
+                        sender_meta[field] = value
+                if sender_meta:
+                    source['sender'] = sender_meta
+
+            raw_message = message.get('raw_message')
+            if raw_message:
+                source['raw_message'] = raw_message
+
+            if source:
+                compact['source'] = source
+
+        return compact
+
+    def _cleanup_legacy_auto_files(self):
+        """删除旧版扁平自动记忆文件，避免新旧格式并存。"""
+        if not os.path.isdir(self.auto_memory_dir):
+            return
+
+        for filename in os.listdir(self.auto_memory_dir):
+            if not filename.endswith('.json'):
+                continue
+
+            legacy_path = os.path.join(self.auto_memory_dir, filename)
+            if os.path.isfile(legacy_path):
+                try:
+                    os.remove(legacy_path)
+                except Exception as e:
+                    logger.warning(f"清理旧自动记忆失败：{legacy_path}，{e}")
 
     async def get_group_profile(self, group_id: int, limit: int = 50) -> Dict[str, Any]:
         """

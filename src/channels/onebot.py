@@ -43,6 +43,7 @@ class OneBotChannel:
         self.websocket: Optional[Any] = None
         self.is_running = False
         self.reconnect_count = 0
+        self._message_tasks: set[asyncio.Task] = set()
     
     async def start(self):
         """启动渠道"""
@@ -56,6 +57,13 @@ class OneBotChannel:
         """停止渠道"""
         logger.info("停止 OneBot 渠道")
         self.is_running = False
+
+        # 取消仍在执行的消息任务，避免停机时残留处理协程
+        for task in list(self._message_tasks):
+            task.cancel()
+        if self._message_tasks:
+            await asyncio.gather(*self._message_tasks, return_exceptions=True)
+        self._message_tasks.clear()
         
         if self.websocket:
             try:
@@ -138,12 +146,24 @@ class OneBotChannel:
                 # 忽略机器人自己发出的回显消息，避免自触发
                 if str(data.get('user_id')) == str(data.get('self_id')):
                     return
-                await self.engine.process_message(data)
+                task = asyncio.create_task(self.engine.process_message(data))
+                self._message_tasks.add(task)
+                task.add_done_callback(self._on_message_task_done)
                 
         except json.JSONDecodeError:
             logger.error(f"无效 JSON: {message}")
         except Exception as e:
             logger.error(f"消息处理失败：{e}", exc_info=True)
+
+    def _on_message_task_done(self, task: asyncio.Task):
+        """回收消息任务并记录异常。"""
+        self._message_tasks.discard(task)
+        if task.cancelled():
+            return
+
+        exc = task.exception()
+        if exc is not None:
+            logger.error(f"异步消息任务失败：{exc}", exc_info=True)
     
     async def send_message(self, message_type: str, target_id: int, content: str):
         """

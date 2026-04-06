@@ -1,73 +1,66 @@
-# Mrpbot 配置文件
+# Mrpbot 配置文件（示例）
 
 bot:
   # 机器人显示名称
   name: "智能助手"
-  
-  # 兼容旧字段：角色名（可选）
-  character: "assistant"
-
-  # 兼容旧字段：人设文件（可选）
-  identity_file: "config/characters/assistant.md"
-  
+  # 被叫到这些名字也会触发“指向机器人”逻辑
+  aliases: ["助手", "小助理"]
   # 日志级别 (DEBUG, INFO, WARNING, ERROR)
   log_level: "INFO"
 
-# 通信渠道
-channels:
-  onebot:
-    # 是否启用
-    enabled: true
-    
-    # WebSocket 地址
-    ws_url: "ws://127.0.0.1:6199"
-    
-    # Access Token (可选)
-    access_token: "${QQ_ACCESS_TOKEN}"
-    
-    # 重连间隔 (秒)
-    reconnect_interval: 5
-    
-    # 心跳间隔 (秒)
-    heartbeat_interval: 30
-
-# 功能模块
-features:
-  # 聊天功能（核心）
-  chat:
-    enabled: true
-    
-    # LLM 模型
-    model: "deepseek-chat"
-    
-    # 最大 token
-    max_tokens: 1024
-    
-    # 温度
-    temperature: 0.7
-    
-    # 系统提示词（可选，最高优先级）
-    # system_prompt: "你是一个简洁的技术助手"
-
-# 人设系统（推荐使用）
 persona:
   # 人设名：会尝试加载 config/characters/<name>.md
   name: "assistant"
-
   # 人设文件路径（可选；设置后优先于 name）
   # file: "config/characters/assistant.md"
-
   # 显式系统提示词（可选；优先级高于 file/name）
   # system_prompt: ""
-  
-  # 群聊功能
-  group:
-    enabled: true
-    
-    # 回复欲望阈值 (0-100，越低越活跃)
-    reply_threshold: 45
 
-    # 回复欲望模型调参（信号叠加 + 时间衰减）
+channels:
+  onebot:
+    # 是否启用 OneBot 通道
+    enabled: true
+    # NapCat/OneBot WebSocket 地址
+    ws_url: "ws://127.0.0.1:6199"
+    # 访问令牌（建议走环境变量）
+    access_token: "${QQ_ACCESS_TOKEN}"
+    # 连接断开后的重连间隔（秒）
+    reconnect_interval: 5
+
+llm:
+  # API Key（走环境变量更安全）
+  api_key: "${DEEPSEEK_API_KEY}"
+  # 兼容 OpenAI 协议的接口地址
+  base_url: "https://api.deepseek.com"
+  # 使用模型
+  model: "deepseek-chat"
+  # 单次请求超时（秒）
+  timeout: 30
+  # 请求失败最大重试次数
+  max_retries: 3
+
+features:
+  chat:
+    # 聊天功能开关
+    enabled: true
+    # 单次回复最大 token
+    max_tokens: 1024
+    # 随机性（越高越发散）
+    temperature: 0.7
+
+  group:
+    # 群聊回复策略开关
+    enabled: true
+    # @机器人时是否必回
+    reply_when_mentioned: true
+    # 决策日志详细程度：off / concise / detailed
+    decision_log_level: "concise"
+    # 回复阈值（越低越活跃）
+    reply_threshold: 50
+    # 会话冷却（秒）
+    cooldown: 12
+
+    # 回复欲望模型调参（可选，不要重要）
     desire_tuning:
       # 初始欲望起点（私聊 / 群聊）
       base_private_desire: 34
@@ -97,101 +90,50 @@ persona:
       short_message_penalty: -6
       # 没有明显信号时的群聊环境热度
       ambient_group_interest: 2
-    
-    # 冷却时间 (秒)
-    cooldown: 60
-    
-    # @机器人必回
-    reply_when_mentioned: true
 
-    # 回复节奏控制（减少句句都回、分段输入误判）
+    # 回复节奏控制
     reply_control:
-      # 同一会话预等待窗口：用于合并用户分段输入（秒）
-      merge_window_seconds: 4.5
+      # 同一用户分段输入合并窗口（秒）
+      merge_window_seconds: 7
       # 回看窗口：提取同一用户最近分段消息（秒）
+      # 重要
       merge_lookback_seconds: 12
       # 最多合并几段
       merge_max_parts: 3
-      # 非 @ 场景最小回复间隔（秒）
-      non_mention_min_interval_seconds: 18
+      # 非@场景最小回复间隔（秒），防止句句都回
+      non_mention_min_interval_seconds: 60
       # 命中停口令后静默时长（秒）
-      quiet_mode_seconds: 180
-      # 停口令关键词
-      stop_words: ["别回了", "别回复", "不要回", "先别说话", "停一下", "闭嘴"]
+      quiet_mode_seconds: 600
+      # 停口令关键词，出现后进入静默
+      stop_words: ["别回了", "别回复", "不要回", "先别说话", "停一下"]
 
-    # 更像人的回复时机控制
-    human_timing:
-      enabled: true
-      # 基础延迟（秒）
-      base_delay_seconds: 1.6
-      # 随机抖动（秒）
-      jitter_seconds: 1.0
-      # 最小延迟（秒）
-      min_delay_seconds: 0.6
-      # 最大延迟（秒）
-      max_delay_seconds: 7.0
-      # 短时间连续回复时附加延迟（秒）
-      burst_extra_seconds: 1.0
-
-    # 元 AI 裁决（更像群聊里的资深成员，用人的节奏判断是否接话）
+    # 元 AI 去重（处理群聊里复杂话题回复）
     meta_ai:
+      # 元AI裁决开关
       enabled: true
       # 同话题最小回复间隔（秒）
-      topic_min_interval_seconds: 45
+      topic_min_interval_seconds: 60
       # 裁决时读取的最近上下文条数
       max_context_messages: 12
       # decision=wait 时默认等待秒数
       default_wait_seconds: 12
-      # wait/skip 的最小置信度（过低则回退 reply）
-      min_confidence: 0.72
-      # 重复话题判定阈值（越高越不容易拦截）
-      duplicate_similarity_threshold: 0.68
-  
-  # 记忆功能（核心）
+      # wait/skip 最小置信度（低于此值回退 reply）
+      min_confidence: 0.78
+      # 重复话题相似度阈值（越高越不容易拦截）
+      duplicate_similarity_threshold: 0.72
+
   memory:
+    # 记忆系统开关
     enabled: true
-    
-    # 短期记忆大小
+    # 短期记忆条数上限
     short_term_size: 100
-    
-    # 自动保存间隔 (秒)
+    # 自动保存间隔（秒）
     auto_save_interval: 300
-    
-    # 记忆目录
+    # 长期记忆目录
     dir: "memory"
+    # 自动记忆目录
     auto_dir: "memory_auto"
-  
-  # 主动消息
+
   proactive:
-    enabled: true
-    
-    # 检查间隔 (秒)
-    check_interval: 3600
-    
-    # 是否发送定时问候
-    greeting_enabled: false
-
-# LLM 配置
-llm:
-  # API Key (也可以用环境变量 DEEPSEEK_API_KEY)
-  api_key: "${DEEPSEEK_API_KEY}"
-  
-  # API 地址 (也可以用环境变量 DEEPSEEK_BASE_URL)
-  base_url: "https://api.deepseek.com"
-  
-  # 默认模型 (也可以用环境变量 DEEPSEEK_MODEL)
-  model: "deepseek-chat"
-  
-  # 超时 (秒)
-  timeout: 30
-  
-  # 重试次数
-  max_retries: 3
-
-# 工具配置
-tools:
-  # 是否启用工具系统
-  enabled: true
-  
-  # 工具目录
-  tools_dir: "src/tools"
+    # 主动回复（默认关闭）
+    enabled: false

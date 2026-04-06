@@ -1,7 +1,6 @@
 # Message Engine
 """
-消息引擎 - 处理消息的核心逻辑
-
+核心
 负责：
 - 消息解析和验证
 - 回复决策
@@ -14,7 +13,6 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from collections import deque
 import asyncio
-import random
 from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
@@ -152,6 +150,7 @@ class MessageEngine:
 
             # 必回触发（@ / 叫名字）走快速通道，不交给元 AI 拦截
             force_reply = self._is_force_reply(content, raw_message, message)
+            is_mentioned = self._is_bot_mentioned(content, raw_message, message)
 
             # 群聊“停口令”进入静默窗口（非必回场景）
             if group_id and (not force_reply) and self._is_group_stop_signal(content):
@@ -168,18 +167,93 @@ class MessageEngine:
             if self.memory_system:
                 await self.memory_system.add_message(user_id, group_id, message)
 
-            # 分段输入合并窗口：同人短时间连续发言，只处理最后一条
-            if group_id and (not force_reply):
+            # 分段输入合并窗口：同一会话只保留最新一条进行总判断
+            if group_id:
                 merge_window = self._merge_window_seconds()
                 if merge_window > 0:
-                    await asyncio.sleep(merge_window)
-                    if self._has_newer_incoming(conv_key, incoming_seq):
-                        logger.debug(f"合并窗口命中新消息，取消本次回复判定 | user={user_id[-4:]}")
+                    if self._is_detailed_decision_log():
+                        logger.info(
+                            "合并窗口 | group=%s user=%s seq=%s window=%.1fs text=%s",
+                            group_id,
+                            user_id[-4:],
+                            incoming_seq,
+                            merge_window,
+                            content[:80],
+                        )
+
+                    state = self.conversation_state.setdefault(
+                        conv_key,
+                        {
+                            'incoming_seq': 0,
+                            'last_reply_at': None,
+                        },
+                    )
+                    state['merge_owner_seq'] = incoming_seq
+                    state['merge_window_until'] = datetime.now() + timedelta(seconds=merge_window)
+
+                    while True:
+                        current_state = self.conversation_state.get(conv_key, {})
+                        owner_seq = int(current_state.get('merge_owner_seq', 0))
+                        if owner_seq != incoming_seq:
+                            if self._is_detailed_decision_log():
+                                logger.info(
+                                    "合并窗口 | group=%s user=%s seq=%s canceled_by_newer owner_seq=%s",
+                                    group_id,
+                                    user_id[-4:],
+                                    incoming_seq,
+                                    owner_seq,
+                                )
+                            else:
+                                logger.debug(f"合并窗口已被更新，取消旧判定 | user={user_id[-4:]}")
+                            return
+
+                        until = current_state.get('merge_window_until')
+                        if not isinstance(until, datetime):
+                            break
+
+                        wait_seconds = (until - datetime.now()).total_seconds()
+                        if wait_seconds <= 0:
+                            break
+
+                        await asyncio.sleep(wait_seconds)
+
+                    current_state = self.conversation_state.get(conv_key, {})
+                    owner_seq = int(current_state.get('merge_owner_seq', 0))
+                    if owner_seq != incoming_seq:
+                        if self._is_detailed_decision_log():
+                            logger.info(
+                                "合并窗口 | group=%s user=%s seq=%s canceled_before_finalize owner_seq=%s",
+                                group_id,
+                                user_id[-4:],
+                                incoming_seq,
+                                owner_seq,
+                            )
+                        else:
+                            logger.debug(f"窗口结束前出现新消息，取消旧判定 | user={user_id[-4:]}")
                         return
 
-                    merged_content = await self._merge_recent_user_content(user_id, int(group_id), content)
+                    original_content = content
+                    merged_content, merge_chunks = await self._merge_recent_user_content(user_id, int(group_id), content)
                     if merged_content:
                         content = merged_content
+
+                    if self._is_detailed_decision_log():
+                        chunk_preview = ' | '.join(merge_chunks[:5])
+                        logger.info(
+                            "合并窗口 | group=%s user=%s seq=%s finalize chunks=%s merged=%s original=%s final=%s parts=%s",
+                            group_id,
+                            user_id[-4:],
+                            incoming_seq,
+                            len(merge_chunks),
+                            int(content != original_content),
+                            original_content[:80],
+                            content[:120],
+                            chunk_preview[:180],
+                        )
+
+                    # 合并后重新判断是否点名/必回，避免使用窗口前的旧状态
+                    force_reply = self._is_force_reply(content, raw_message, message)
+                    is_mentioned = self._is_bot_mentioned(content, raw_message, message)
             
             # 更新回复欲望
             self._update_reply_desire(user_id, group_id, content, raw_message, message)
@@ -234,19 +308,8 @@ class MessageEngine:
             )
             
             if should_reply:
-                delay_seconds = self._compute_human_delay(
-                    user_id=user_id,
-                    group_id=group_id,
-                    content=content,
-                    force_reply=force_reply,
-                    extra_wait_seconds=extra_wait_seconds,
-                )
-                if delay_seconds > 0:
-                    logger.debug(f"延迟回复 {delay_seconds:.2f}s | user={user_id[-4:]}")
-                    await asyncio.sleep(delay_seconds)
-
                 # 等待期间若有更新消息进入同会话，放弃旧回复，避免抢话
-                if (not force_reply) and self._has_newer_incoming(conv_key, incoming_seq):
+                if (not is_mentioned) and self._has_newer_incoming(conv_key, incoming_seq):
                     logger.debug(f"检测到更新消息，取消旧回复 | user={user_id[-4:]}")
                     return
 
@@ -330,6 +393,9 @@ class MessageEngine:
         level = str(level).strip().lower()
         return level if level in {'off', 'concise', 'detailed'} else 'concise'
 
+    def _is_detailed_decision_log(self) -> bool:
+        return self._decision_log_level() == 'detailed'
+
     def _log_decision_summary(
         self,
         *,
@@ -410,60 +476,6 @@ class MessageEngine:
         )
         state['last_reply_at'] = datetime.now()
 
-    def _compute_human_delay(
-        self,
-        *,
-        user_id: str,
-        group_id: Optional[int],
-        content: str,
-        force_reply: bool,
-        extra_wait_seconds: int = 0,
-    ) -> float:
-        """计算更像人的回复延迟。"""
-        if not group_id:
-            return 0.0
-
-        timing_cfg = (
-            self.config.get('features', {})
-            .get('group', {})
-            .get('human_timing', {})
-        )
-        if not timing_cfg.get('enabled', True):
-            return 0.0
-
-        base = float(timing_cfg.get('base_delay_seconds', 1.6))
-        jitter = float(timing_cfg.get('jitter_seconds', 1.0))
-        min_delay = float(timing_cfg.get('min_delay_seconds', 0.6))
-        max_delay = float(timing_cfg.get('max_delay_seconds', 7.0))
-        burst_extra = float(timing_cfg.get('burst_extra_seconds', 1.0))
-
-        # 文本越长，思考稍久
-        length_bonus = min(2.4, len(content) / 36.0)
-        # 疑问句增加一点停顿
-        question_bonus = 0.5 if any(ch in content for ch in ['?', '？', '吗', '怎么', '为什么']) else 0.0
-        # 随机抖动避免机械感
-        noise = random.uniform(-jitter, jitter)
-
-        conv_key = f"group_{group_id}" if group_id else f"user_{user_id}"
-        state = self.conversation_state.get(conv_key, {})
-        last_reply_at = state.get('last_reply_at')
-        burst_bonus = 0.0
-        if isinstance(last_reply_at, datetime):
-            gap = (datetime.now() - last_reply_at).total_seconds()
-            if gap < 20:
-                burst_bonus = burst_extra
-
-        delay = base + length_bonus + question_bonus + noise + burst_bonus
-        delay = max(min_delay, min(max_delay, delay))
-
-        if force_reply:
-            delay = min(delay, 2.5)
-
-        if extra_wait_seconds > 0:
-            delay = max(delay, float(extra_wait_seconds))
-
-        return max(0.0, delay)
-
     def _merge_window_seconds(self) -> float:
         cfg = self.config.get('features', {}).get('group', {}).get('reply_control', {})
         return float(cfg.get('merge_window_seconds', 4.5))
@@ -499,19 +511,22 @@ class MessageEngine:
             return False
         return datetime.now() < until
 
-    async def _merge_recent_user_content(self, user_id: str, group_id: int, current_content: str) -> str:
+    async def _merge_recent_user_content(self, user_id: str, group_id: int, current_content: str) -> tuple[str, List[str]]:
         """将同一用户短时间分段输入合并为一句，减少连续回复。"""
         if not self.memory_system:
-            return current_content
+            return current_content, [current_content]
 
         cfg = self.config.get('features', {}).get('group', {}).get('reply_control', {})
-        lookback_seconds = int(cfg.get('merge_lookback_seconds', 12))
-        max_parts = int(cfg.get('merge_max_parts', 3))
+        merge_window = float(cfg.get('merge_window_seconds', 4.5))
+        # 默认回看窗口给到 2 倍 merge_window，避免窗口尾部 finalize 时丢掉前半句
+        lookback_seconds = int(cfg.get('merge_lookback_seconds', max(18, int(merge_window * 2 + 2))))
+        # 默认最多拼接更多分段，避免“我/要/...”这类逐字输入被截断
+        max_parts = int(cfg.get('merge_max_parts', 12))
 
         try:
             recent = await self.memory_system.get_group_recent(group_id, limit=20)
         except Exception:
-            return current_content
+            return current_content, [current_content]
 
         now = datetime.now()
         chunks: List[str] = []
@@ -538,10 +553,11 @@ class MessageEngine:
                 break
 
         if not chunks:
-            return current_content
+            return current_content, [current_content]
         chunks.reverse()
         merged = ' '.join(chunks).strip()
-        return merged or current_content
+        final_content = merged or current_content
+        return final_content, chunks
 
     def _is_force_reply(self, content: str, raw_message: Optional[str], message: Optional[Dict[str, Any]] = None) -> bool:
         """判断是否属于必须立即回复的场景（不经过元 AI 延迟）。"""
@@ -549,11 +565,39 @@ class MessageEngine:
             return True
 
         # 机器人名字
-        bot_names = ['三月七', '三月', '小三月', '77', '七七']
+        bot_names = self._get_bot_name_aliases()
         if any(name in content for name in bot_names):
             return True
 
         return False
+
+    def _get_bot_name_aliases(self) -> List[str]:
+        """获取机器人可识别名称（主名 + 别名）。"""
+        bot_cfg = self.config.get('bot', {})
+        names: List[str] = []
+
+        primary_name = str(bot_cfg.get('name', '')).strip()
+        if primary_name:
+            names.append(primary_name)
+
+        aliases = bot_cfg.get('aliases', [])
+        if isinstance(aliases, list):
+            for alias in aliases:
+                alias_text = str(alias).strip()
+                if alias_text:
+                    names.append(alias_text)
+
+        # 向后兼容：未配置别名时，保留旧版本常见触发词
+        if not names:
+            names.extend(['bot', '助手'])
+
+        # 去重且保留顺序
+        deduped: List[str] = []
+        for name in names:
+            if name not in deduped:
+                deduped.append(name)
+
+        return deduped
 
     def _extract_at_targets(self, raw_message: Optional[str]) -> List[str]:
         """提取 CQ:at 目标 QQ 列表。"""
@@ -684,7 +728,7 @@ class MessageEngine:
                 direct_attention = True
         if '@' in text:
             direct_attention = True
-        bot_names = ['三月七', '三月', '小三月', '77', '七七']
+        bot_names = self._get_bot_name_aliases()
         if any(name in text for name in bot_names):
             direct_attention = True
         if direct_attention:
@@ -802,7 +846,7 @@ class MessageEngine:
                 return True
         
         # 叫机器人名字必回
-        bot_names = ['三月七', '三月', '小三月', '77', '七七']
+        bot_names = self._get_bot_name_aliases()
         if any(name in content for name in bot_names):
             self._set_decision_trace(key, reason='name_called_force_reply')
             logger.debug(f"{user_id[-4:]} 叫机器人名字，必回")
@@ -912,12 +956,10 @@ class MessageEngine:
                     if recent_messages:
                         context_lines = []
                         for msg in recent_messages:
-                            sender_id = msg.get('user_id', 'unknown')
-                            message_payload = msg.get('message', {})
-                            if isinstance(message_payload, dict):
-                                msg_content = self._extract_text(message_payload.get('message', ''))
-                            else:
-                                msg_content = self._extract_text(message_payload)
+                            sender_id = str(msg.get('user_id', 'unknown'))
+                            msg_content = str(msg.get('text', ''))
+                            if not msg_content:
+                                msg_content = self._extract_text(msg.get('message', ''))
                             context_lines.append(f"用户{sender_id[-4:]}: {msg_content[:50]}")
                         group_context = "\n".join(context_lines)
                 except Exception as e:

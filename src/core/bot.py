@@ -9,15 +9,18 @@
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 from datetime import datetime
+
+if TYPE_CHECKING:
+    from .engine import MessageEngine
+    from .lifecycle import LifecycleManager
 
 logger = logging.getLogger(__name__)
 
 
 class Mrpbot:
     """
-    三月七机器人主类
     
     Attributes:
         config: 配置字典
@@ -34,7 +37,7 @@ class Mrpbot:
             config: 配置字典
         """
         self.config = config
-        self.name = config.get('bot', {}).get('name', '三月七')
+        self.name = config.get('bot', {}).get('name', '智能助手')
         self.identity_file = config.get('bot', {}).get('identity_file', 'config/identity.md')
         
         # 状态
@@ -47,7 +50,7 @@ class Mrpbot:
         self.features: Dict[str, Any] = {}
         self.lifecycle: Optional[LifecycleManager] = None
         
-        logger.info(f"{self.name} v2.0 初始化完成")
+        logger.info(f"{self.name} 初始化完成")
     
     async def start(self):
         """

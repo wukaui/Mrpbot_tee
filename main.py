@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Mrpbot 2.0 - March 7th Robot Platform
+Mrpbot 2.0
 
 主入口文件
 """
@@ -31,7 +31,7 @@ async def main():
     # 设置日志
     logger = setup_logger('Mrpbot')
     logger.info("=" * 60)
-    logger.info("Mrpbot 2.0 - March 7th Robot Platform")
+    logger.info("Mrpbot 2.0")
     logger.info("=" * 60)
     
     # 加载配置

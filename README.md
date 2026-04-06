@@ -2,6 +2,13 @@
 
 Mrpbot 是一个基于 OneBot 的异步 QQ 机器人项目，当前实现围绕“消息接入 -> 回复判定 -> LLM 生成 -> 记忆持久化”这条主链路展开。它支持群聊、私聊、记忆、主动任务，以及基于人设的回复风格控制。
 
+## 用途与合规声明
+
+- 本项目仅用于个人学习、课程实践与技术研究，不以营利为目的。
+- 本项目不作为任何商业化服务或生产系统的默认方案。
+- 使用者应自行确认并遵守所在平台、赛事与法律法规的要求。
+- 如需参赛或上线，请优先采用官方开放接口与合规授权通道。
+
 ## 快速开始
 
 ### 1. 安装依赖
@@ -42,7 +49,7 @@ Mprbot_tee/
 │   ├── persona/           # 人设管理
 │   └── utils/             # 配置与日志
 ├── memory/                # 长期记忆
-├── memory_auto/           # 自动记忆落盘
+├── memory_auto/           # 自动记忆落盘（groups/<id>/... / users/<id>.json）
 ├── logs/                  # 日志输出
 └── docs/                  # 补充文档
 ```
@@ -58,9 +65,9 @@ Mprbot_tee/
 
 ### 记忆系统
 
-- 短期记忆按用户 / 群时间线保存
-- 长期记忆保存到 `memory/long_term.md`
-- 自动记忆保存到 `memory_auto/*.json`
+- 短期记忆按用户 / 群时间线保存，并在启动时从磁盘恢复
+- 长期记忆保存到 `memory/long_term.md`(还没做)
+- 自动记忆保存到 `memory_auto/groups/<group_id>/timeline.json`、`memory_auto/groups/<group_id>/users/<user_id>.json`、`memory_auto/users/<user_id>.json`
 - 关闭时和生命周期任务都会触发保存
 
 ### 人设系统
@@ -68,7 +75,6 @@ Mprbot_tee/
 - 支持 `persona.system_prompt`
 - 支持 `persona.file`
 - 支持 `persona.name -> config/characters/<name>.md`
-- 兼容旧字段 `bot.character` / `bot.identity_file`
 
 ### 群聊策略
 
@@ -87,5 +93,4 @@ Mprbot_tee/
 
 - 当前代码入口是 `main.py`
 - OneBot 通道与 LLM 客户端都通过 `src/core/bot.py` 和 `src/core/engine.py` 串起来
-- README 里的旧目录说明已过时，以当前仓库结构和代码实现为准
 

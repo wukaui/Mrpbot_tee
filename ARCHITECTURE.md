@@ -129,6 +129,6 @@ $$desire = \min(100, desire + gain) - decay\_rate$$
 
 - 短期记忆：按用户/群用户维度维护消息列表，默认最多 `100` 条
 - 长期记忆：`memory/long_term.md`
-- 自动记忆文件：`memory_auto/*.json`
-- 生命周期任务与引擎关闭时都会触发保存
+- 自动记忆文件：`memory_auto/groups/<group_id>/timeline.json`、`memory_auto/groups/<group_id>/users/<user_id>.json`、`memory_auto/users/<user_id>.json`
+- 启动时会从磁盘恢复自动记忆，生命周期任务与引擎关闭时都会触发保存
 
